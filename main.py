@@ -7,12 +7,14 @@ import praw.exceptions
 
 from config import id, secret, password
 
-
 def load_json(filename: str):
     try:
         with open(filename, "r") as file:
             if file.readable(): # Check for corruption
-                return json.load(file)
+                try:
+                    return json.load(file)
+                except:
+                    raise FileNotFoundError
             else:
                 print("Broken file detected!")
                 return {}
@@ -20,11 +22,17 @@ def load_json(filename: str):
         print(f"Error opening db: {e} - Returning no DB")
         return {}
 
-def save_json(json: dict, filename: str):
+def save_json(db: dict, filename: str):
     with open(filename, "w") as file:
-        file = json.dump(json)
+        json.dump(db, file)
 
 class Reddit_Handler:
+    def __init__(self):
+        self.db = load_json("db.json")
+        self.reddit = None
+
+        self.login()
+
     def login(self):
         try:
             self.reddit = praw.Reddit(
@@ -39,11 +47,22 @@ class Reddit_Handler:
 
         print(f"Login as: {self.reddit.user.me()}")
 
+    def check_for_new_posts(self):
+        for submission in self.reddit.subreddit("tsrotd_dev").new(limit=15):
+            if submission.id in self.db.keys():
+                continue
+
+            self.db[submission.id] = True
+
+    def exit(self):
+        save_json(self.db, "db.json")
+        print("Saved DB")
 
 def main():
-    db = load_json("db.json")
     reddit = Reddit_Handler()
-    reddit.login()
+    reddit.check_for_new_posts()
+
+    reddit.exit()
 
 if __name__ == "__main__":
     main()
