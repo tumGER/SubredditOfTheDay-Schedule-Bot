@@ -4,6 +4,7 @@ import os
 import sys
 import dateparser
 import logging
+import datetime
 
 import praw.exceptions
 
@@ -78,22 +79,27 @@ class TSROTD:
         global db
 
         for submission in self.sub.new(limit=15):
-            if submission.id in db.keys():
-                continue # @TODO: Check if there have been any updates to the post / comments
+            has_date_comment = False
+            
+            if not submission.id in db.keys():
+                db[submission.id] = {}
 
-            db[submission.id] = {}
-
-            if submission.num_comments == 0 \
-            and (date := dateparser.parse(submission.title)) != None \
-            and not db[submission.id].has_key("date") \
-            and helpers.check_if_date_valid(date):
-                logging.debug(f"Found valid submission date in title of: {submission.id}")
-                
-                db[submission.id]["date"] = {}
-                db_dt = db[submission.id]["date"]
-                db_dt["day"] = date
-
-            # db[submission.id]["date"] = self.get_date()
+            # This huge chain checks for all conditions to be right when extracting from the title
+            if submission.num_comments == 0:
+                if (date := dateparser.parse(submission.title)) != None \
+                and helpers.check_if_date_valid(date):
+                    logging.debug(f"Found valid submission date in title of: {submission.id}")
+                    db[submission.id]["date"] = helpers.parse_date(date)
+            else:
+                for comment in submission.comments:
+                    if comment.body.lower().startswith("[date]") \
+                    and (date := dateparser.parse(comment.body)) != None \
+                    and helpers.check_if_date_valid(date):
+                        logging.debug(f"Found date comment for {submission.id}: {comment.id}")    
+                        
+                        # @TODO: Parse comment
+                        
+                        has_date_comment = True
 
 def main():
     logging.root.handlers = []
