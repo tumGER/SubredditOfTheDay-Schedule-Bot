@@ -62,7 +62,7 @@ class Reddit_Handler:
         logging.info(f"Login as: {self.reddit.user.me()}")
 
     def exit(self):
-        save_json(self.db, "db.json")
+        save_json(db, "db.json")
         logging.info("Saved DB")
 
 class TSROTD:
@@ -75,31 +75,36 @@ class TSROTD:
         self.reddit = reddit
         self.sub = reddit.subreddit("tsrotd_dev")
 
+    def search_for_dates(self, submission: praw.Reddit.submission):
+        global db
+        
+        if (date := helpers.parse_date_from_string(submission.title)) != None \
+        and helpers.check_if_date_valid(date):
+            logging.info(f"Found valid submission date in title of: {submission.id}")
+            db[submission.id]["date"] = {}
+            db[submission.id]["date"] = helpers.parse_date(date)
+            
+        if submission.num_comments > 0:
+            for comment in submission.comments:
+                if "[date]" in comment.body.lower() \
+                and (date := helpers.parse_date_from_string(comment.body)) != None \
+                and helpers.check_if_date_valid(date):
+                    logging.info(f"Found date comment for {submission.id}: {comment.id}")    
+                    
+                    db[submission.id]["date"] = {}
+                    db[submission.id]["date"] = helpers.parse_date(date)
+
     def check_for_new_posts(self):
         global db
 
         for submission in self.sub.new(limit=15):
-            has_date_comment = False
+            logging.debug(f"Going through submission: {submission.title}")
             
             if not submission.id in db.keys():
                 db[submission.id] = {}
-
-            # This huge chain checks for all conditions to be right when extracting from the title
-            if submission.num_comments == 0:
-                if (date := dateparser.parse(submission.title)) != None \
-                and helpers.check_if_date_valid(date):
-                    logging.debug(f"Found valid submission date in title of: {submission.id}")
-                    db[submission.id]["date"] = helpers.parse_date(date)
-            else:
-                for comment in submission.comments:
-                    if comment.body.lower().startswith("[date]") \
-                    and (date := dateparser.parse(comment.body)) != None \
-                    and helpers.check_if_date_valid(date):
-                        logging.debug(f"Found date comment for {submission.id}: {comment.id}")    
-                        
-                        # @TODO: Parse comment
-                        
-                        has_date_comment = True
+            
+            self.search_for_dates(submission)
+            
 
 def main():
     logging.root.handlers = []
@@ -114,6 +119,8 @@ def main():
     
     reddit = Reddit_Handler()
     reddit.tsrotd.check_for_new_posts()
+    
+    reddit.exit()
 
 if __name__ == "__main__":
     main()
