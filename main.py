@@ -5,6 +5,7 @@ import sys
 import dateparser
 import logging
 import datetime
+import re
 
 import praw.exceptions
 
@@ -106,6 +107,14 @@ class TSROTD:
             
             db[submission.id]["title"] = title
 
+    def check_for_sub(self, submission: praw.Reddit.submission):
+        for x in submission.title.split():          
+            if (match := re.match(r"^[r]\/|^\/[r]\/", x)):
+                title = x.replace(match.group(0), "").strip()
+                logging.info(f"Found subreddit name of: {title}")
+                
+                return title
+
     def check_for_new_posts(self):
         global db
 
@@ -122,6 +131,8 @@ class TSROTD:
             
             self.search_for_dates(submission)
             self.check_for_title(submission)
+            if (sub := self.check_for_sub(submission)) != "":
+                db[submission.id]["sub"] = sub
             
 
 def main():
