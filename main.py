@@ -6,12 +6,15 @@ import dateparser
 import logging
 import datetime
 import re
+import enum
 
 import praw.exceptions
 
+from discord_webhook import DiscordWebhook, DiscordEmbed
+
 import helpers
 
-from config import id, secret, password
+from config import *
 
 db = {}
 
@@ -133,7 +136,33 @@ class TSROTD:
             self.check_for_title(submission)
             if (sub := self.check_for_sub(submission)) != "":
                 db[submission.id]["sub"] = sub
+
+class DiscordHelper:
+    def __init__(self, webhook_url: str):
+        # Extract from config.py
+        self.webhook = DiscordWebhook(url = webhook_url, username = discord_username)
+        self.embed = DiscordEmbed()
             
+    def basic_message(self, title: str, message: str, color):
+        if isinstance(color, Color):
+            color = color.value
+        
+        logging.info(color)
+        self.embed = DiscordEmbed(
+            title = title,
+            description = message,
+            color = color
+        )
+    
+    def send_message(self):
+        self.webhook.add_embed(self.embed)
+        self.webhook.execute(True, True)
+        self.embed = DiscordEmbed()
+
+class Color(enum.Enum):
+    red = "ff0000"
+    green = "00dd1f"
+    gray = "a0a0a0"   
 
 def main():
     logging.root.handlers = []
@@ -148,6 +177,10 @@ def main():
     
     reddit = Reddit_Handler()
     reddit.tsrotd.check_for_new_posts()
+    
+    discord = DiscordHelper(discord_webhook)
+    discord.basic_message("Bot has started.", "Pog", Color.gray)
+    discord.send_message()
     
     reddit.exit()
 
