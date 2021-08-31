@@ -93,6 +93,18 @@ class TSROTD:
                     
                     db[submission.id]["date"] = {}
                     db[submission.id]["date"] = helpers.parse_date(date)
+    
+    def check_for_title(self, submission: praw.Reddit.submission):
+        global db
+        
+        for comment in submission.comments:
+            if not "[title]" in comment.body.lower():
+                continue
+    
+            logging.info(f"Found title comment for {submission.id}: {comment.id}")
+            title = comment.body.replace("[title]", "", 1).strip()
+            
+            db[submission.id]["title"] = title
 
     def check_for_new_posts(self):
         global db
@@ -100,10 +112,16 @@ class TSROTD:
         for submission in self.sub.new(limit=15):
             logging.debug(f"Going through submission: {submission.title}")
             
+            if submission.link_flair_text != "BOT READY":
+                continue
+            
+            logging.info("Found BOT READY submission!")
+            
             if not submission.id in db.keys():
                 db[submission.id] = {}
             
             self.search_for_dates(submission)
+            self.check_for_title(submission)
             
 
 def main():
