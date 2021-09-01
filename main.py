@@ -78,7 +78,7 @@ class TSROTD:
     def __init__(self, reddit: praw.Reddit):
         self.reddit = reddit
         self.sub = reddit.subreddit("tsrotd_dev")
-        self.discord = DiscordHelper()
+        self.discord = DiscordHelper(discord_webhook)
 
     def search_for_dates(self, submission: praw.Reddit.submission):
         global db
@@ -118,19 +118,27 @@ class TSROTD:
                 logging.info(f"Found subreddit name of: {title}")
                 
                 return title
+        if len(submission.title.split()) == 1:
+            logging.info(f"Found subreddit name of: {submission.title}")
+            return submission.title
 
     def is_ready(self, submission: praw.Reddit.submission):        
         for key in ("date", "title", "sub"):
-            if not db[submission.id].has_key("date") and db[submission.id].has_key("EMERGENCY"):
-                continue
-            if not db[submission.id].has_key(key):
+            logging.debug(key)
+            
+            if not key in db[submission.id].keys():
+                if key == "date" and "EMERGENCY" in db[submission.id].keys():
+                    logging.info("Found post with no date that is scheduled for emergencies!")
+                    continue
                 return False
-            return True
+        return True
 
     def check_for_new_posts(self):
         global db
 
         for submission in self.sub.new(limit=15):
+            announce = False
+            
             logging.debug(f"Going through submission: {submission.title}")
             
             if not submission.link_flair_text in ("BOT READY", "EMERGENCY"):
@@ -142,6 +150,11 @@ class TSROTD:
                 db[submission.id] = {}
                 announce = True
             
+            if "IS_READY" in db[submission.id].keys():
+                continue
+            
+            logging.info(submission.link_flair_text)
+            
             if submission.link_flair_text != "EMERGENCY":
                 self.search_for_dates(submission)
             else:
@@ -151,17 +164,17 @@ class TSROTD:
                 db[submission.id]["sub"] = sub
             
             if self.is_ready(submission):
+                logging.info(f"Announcing {submission.id}")
                 db[submission.id]["IS_READY"] = None
                 announce = True
                 
-            if announce:
-                self.discord.new_post(db[submission.id])
-                self.discord.send_message()
+            if announce:                
+                self.discord.new_post(db[submission.id], f"https://reddit.com{submission.permalink}")
 
 class DiscordHelper:
     def __init__(self, webhook_url: str):
         # Extract from config.py
-        self.webhook = DiscordWebhook(url = webhook_url, username = discord_username)
+        self.webhook = DiscordWebhook(webhook_url)
         self.embed = DiscordEmbed()
             
     def basic_message(self, title: str, message: str, color):
@@ -175,27 +188,36 @@ class DiscordHelper:
             color = color
         )
         
-    def new_post(self, data: dict):
-        if data.has_key("IS_READY"):
+    def new_post(self, data: dict, post_url: str):
+        if "IS_READY" in data.keys():
             title = "New Post Ready"
             color = Color.green
         else:
             title = "New Draft Post"
             color = Color.gray
         
-        sub = data["sub"] if data.has_key("sub") else "UNKNOWN SUBREDDIT"
-        title = data["title"] if data.has_key("title") else "UNKNOWN TITLE"
+        sub = data["sub"] if "sub" in data.keys() else "UNKNOWN SUBREDDIT"
+        post_title = data["title"] if "title" in data.keys() else "UNKNOWN TITLE"
         
-        self.basic_message(title, f"/r/{sub}: {title}", color)
+        self.basic_message(f"/r/{sub}: {post_title}", title, color)
+        self.embed.set_url(post_url)
         
-        self.embed.set_author(name = "tomBOT", url = "https://github.com/tumGER/SubredditOfTheDay-Schedule-Bot")
+        self.embed.set_author(name = "tomBOT", url = "https://github.com/tumGER/SubredditOfTheDay-Schedule-Bot", icon_url = "https://avatars.githubusercontent.com/u/25822956?v=4")
         
+        if "date" in data.keys():
+            dt = data["date"]
+            date = "{}.{}.{}".format(dt["day"], dt["month"], dt["year"])
+            
+            self.embed.add_embed_field(name = "Date", value = date)
+            
+        self.embed.add_embed_field(name = "Status", value = "Emergency Post" if "EMERGENCY" in data.keys() else "Normal Post")
         
-    
+        self.webhook.add_embed(self.embed)
+        logging.debug(self.webhook.execute())
+        
     def send_message(self):
         self.webhook.add_embed(self.embed)
-        self.webhook.execute(True, True)
-        self.embed = DiscordEmbed()
+        logging.debug(self.webhook.execute())
 
 class Color(enum.Enum):
     red = "ff0000"
@@ -205,7 +227,7 @@ class Color(enum.Enum):
 def main():
     logging.root.handlers = []
     logging.basicConfig(
-        level=logging.INFO,
+        level=logging.DEBUG,
         format="%(asctime)s [%(levelname)s] %(message)s",
         handlers=[
             logging.FileHandler("debug.log"),
@@ -215,10 +237,6 @@ def main():
     
     reddit = Reddit_Handler()
     reddit.tsrotd.check_for_new_posts()
-    
-    discord = DiscordHelper(discord_webhook)
-    discord.basic_message("Bot has started.", "Pog", Color.gray)
-    discord.send_message()
     
     reddit.exit()
 
