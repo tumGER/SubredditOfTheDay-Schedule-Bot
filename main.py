@@ -169,7 +169,7 @@ class TSROTD:
                 continue
     
             logging.info(f"Found title comment for {submission.id}: {comment.id}")
-            title = comment.body.replace("[title]", "", 1).strip()
+            title = comment.body[7:].strip()
             
             db[submission.id]["title"] = title
 
@@ -243,6 +243,37 @@ class TSROTD:
         body = submission.selftext.split("=== STARTING BOT FIELD ===", 1)[0]
         submission.edit(body + text)
 
+class PostHelper:
+    def __init__(self, subreddit: str, reddit: praw.Reddit):
+        self.reddit = reddit
+        self.sub = reddit.subreddit(subreddit)
+    
+    def check_time(self):
+        """Checks if the time is right to post the post. Also checks whether anything has been posted so far today"""
+        now = datetime.datetime.now()
+        
+        for submission in self.sub.new(limit=3):
+            time_post = datetime.datetime.utcfromtimestamp(submission.created_utc)
+            difference = now - time_post
+            if (difference.total_seconds() / 3600) < 22:
+                return False
+        
+        if now.hour == 12:
+            return True
+        
+    def send_post(self):
+        try:
+            post = db.pop(db["NEXT_POST"])
+        except KeyError:
+            logging.error("Couldn't find next post!!!")
+            discord = DiscordHelper(discord_webhook)
+            discord.basic_message("Error Posting Post",
+                                  "Couldn't find NEXT_POST in DB",
+                                  Color.red)
+            return
+        
+        # @TODO: Continue work here
+
 class DiscordHelper:
     def __init__(self, webhook_url: str):
         # Extract from config.py
@@ -259,6 +290,8 @@ class DiscordHelper:
             description = message,
             color = color
         )
+        
+        self.send_message()
         
     def new_post(self, data: dict, post_url: str):
         if "IS_READY" in data.keys():
