@@ -69,6 +69,68 @@ class Reddit_Handler:
         save_json(db, "db.json")
         logging.info("Saved DB")
 
+class ScheduleBuilder:
+    def __init__(self):
+        self.body = ""
+        self.beginning = "=== STARTING BOT FIELD === \n\n\n Subreddit | Date | Info \n ---|---|----"
+        self.ending = "\n\n Beep, boop, bap - Booing Conalfisher 24/7"
+        
+        self.body += self.beginning
+    
+    def add_field(self, key: str, value: str, details: str):
+        self.body += f"\n{key} | {value} | {details}"
+        
+    def finish_and_return(self):
+        self.body += self.ending
+        return self.body
+    
+    def do_the_magic(self):
+        emergency_posts = []
+        ready_posts = []
+        
+        for sub in db.keys():
+            if not "IS_READY" in db[sub].keys():
+                continue
+            
+            if "EMERGENCY" in db[sub].keys():
+                emergency_posts.append(sub)
+            else:
+                ready_posts.append(sub)
+        
+        for i in range(1, 30):
+            found_post = False
+            
+            if i != 0:
+                date = datetime.datetime.now() + datetime.timedelta(days=i)
+            else:
+                date = datetime.datetime.now()
+            day = date.day
+            month = date.month
+            year = date.year
+            
+            for post in ready_posts:
+                
+                po_dt = db[post]["date"]
+                
+                if po_dt["day"] == day \
+                and po_dt["month"] == month \
+                and po_dt["year"] == year:
+                    self.add_field(db[post]["sub"], f"{day}.{month}.{year}", "Scheduled")
+                    logging.info(f"Found sub for {day}.{month}")
+                    found_post = True
+                    
+                    ready_posts.remove(post)
+                    
+                    break
+            
+            if not found_post:
+                if len(emergency_posts) == 0:
+                    self.add_field("No Sub Available", f"{day}.{month}.{year}", "")
+                    continue
+                
+                self.add_field(db[emergency_posts[0]]["sub"], f"{day}.{month}.{year}", "Emergency")
+                emergency_posts.pop(0)
+                
 class TSROTD:
     """
     TinySubredditOfTheDay Subclass
@@ -170,6 +232,16 @@ class TSROTD:
                 
             if announce:                
                 self.discord.new_post(db[submission.id], f"https://reddit.com{submission.permalink}")
+            
+    def create_schedule(self):
+        schedule = ScheduleBuilder()
+        schedule.do_the_magic()
+        text = schedule.finish_and_return()
+        
+        submission = self.reddit.submission("pfvef6")
+        
+        body = submission.selftext.split("=== STARTING BOT FIELD ===", 1)[0]
+        submission.edit(body + text)
 
 class DiscordHelper:
     def __init__(self, webhook_url: str):
@@ -213,11 +285,11 @@ class DiscordHelper:
         self.embed.add_embed_field(name = "Status", value = "Emergency Post" if "EMERGENCY" in data.keys() else "Normal Post")
         
         self.webhook.add_embed(self.embed)
-        logging.debug(self.webhook.execute())
+        logging.debug(self.webhook.execute(True))
         
     def send_message(self):
         self.webhook.add_embed(self.embed)
-        logging.debug(self.webhook.execute())
+        logging.debug(self.webhook.execute(True))
 
 class Color(enum.Enum):
     red = "ff0000"
@@ -237,6 +309,7 @@ def main():
     
     reddit = Reddit_Handler()
     reddit.tsrotd.check_for_new_posts()
+    reddit.tsrotd.create_schedule()
     
     reddit.exit()
 
