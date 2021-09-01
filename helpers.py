@@ -28,9 +28,9 @@ def find_year_by_datetime(date: datetime.datetime):
     now = datetime.datetime.now()
     
     if (year := date.year) == None: # If no year was provided, year is likely this year
-        year = now.year      
+        year = now.year
     if date.month == 1 and now.month == 12: # Date is next year when month provided is lower than the current one
-        year += 1   
+        year += 1
     return year
 
 def parse_date_from_string(string: str):

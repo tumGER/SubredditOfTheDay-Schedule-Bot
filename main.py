@@ -75,9 +75,10 @@ class TSROTD:
     
     Requires RedditHandler!
     """
-    def __init__(self, reddit):
+    def __init__(self, reddit: praw.Reddit):
         self.reddit = reddit
         self.sub = reddit.subreddit("tsrotd_dev")
+        self.discord = DiscordHelper()
 
     def search_for_dates(self, submission: praw.Reddit.submission):
         global db
@@ -118,24 +119,44 @@ class TSROTD:
                 
                 return title
 
+    def is_ready(self, submission: praw.Reddit.submission):        
+        for key in ("date", "title", "sub"):
+            if not db[submission.id].has_key("date") and db[submission.id].has_key("EMERGENCY"):
+                continue
+            if not db[submission.id].has_key(key):
+                return False
+            return True
+
     def check_for_new_posts(self):
         global db
 
         for submission in self.sub.new(limit=15):
             logging.debug(f"Going through submission: {submission.title}")
             
-            if submission.link_flair_text != "BOT READY":
+            if not submission.link_flair_text in ("BOT READY", "EMERGENCY"):
                 continue
             
-            logging.info("Found BOT READY submission!")
+            logging.info("Found BOT READY / EMERGENCY submission!")
             
             if not submission.id in db.keys():
                 db[submission.id] = {}
+                announce = True
             
-            self.search_for_dates(submission)
+            if submission.link_flair_text != "EMERGENCY":
+                self.search_for_dates(submission)
+            else:
+                db[submission.id]["EMERGENCY"] = None
             self.check_for_title(submission)
             if (sub := self.check_for_sub(submission)) != "":
                 db[submission.id]["sub"] = sub
+            
+            if self.is_ready(submission):
+                db[submission.id]["IS_READY"] = None
+                announce = True
+                
+            if announce:
+                self.discord.new_post(db[submission.id])
+                self.discord.send_message()
 
 class DiscordHelper:
     def __init__(self, webhook_url: str):
@@ -153,6 +174,23 @@ class DiscordHelper:
             description = message,
             color = color
         )
+        
+    def new_post(self, data: dict):
+        if data.has_key("IS_READY"):
+            title = "New Post Ready"
+            color = Color.green
+        else:
+            title = "New Draft Post"
+            color = Color.gray
+        
+        sub = data["sub"] if data.has_key("sub") else "UNKNOWN SUBREDDIT"
+        title = data["title"] if data.has_key("title") else "UNKNOWN TITLE"
+        
+        self.basic_message(title, f"/r/{sub}: {title}", color)
+        
+        self.embed.set_author(name = "tomBOT", url = "https://github.com/tumGER/SubredditOfTheDay-Schedule-Bot")
+        
+        
     
     def send_message(self):
         self.webhook.add_embed(self.embed)
