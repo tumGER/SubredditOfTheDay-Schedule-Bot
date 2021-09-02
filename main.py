@@ -98,7 +98,7 @@ class ScheduleBuilder:
         ready_posts = []
         
         for sub in db.keys():
-            if sub == "NEXT_POST":
+            if sub in ("NEXT_POST", "LAST_POST_DAY"):
                 continue
             
             if not "IS_READY" in db[sub].keys():
@@ -116,9 +116,13 @@ class ScheduleBuilder:
                 date = datetime.datetime.now() + datetime.timedelta(days=i)
             else:
                 date = datetime.datetime.now()
+                
             day = date.day
             month = date.month
             year = date.year
+            
+            if db["LAST_POST_DAY"] == day and i == 0:
+                continue
             
             for post in ready_posts:
                 
@@ -159,6 +163,12 @@ class TSROTD:
         self.reddit = reddit
         self.sub = reddit.subreddit("tsrotd_dev")
         self.discord = DiscordHelper(discord_webhook)
+        
+        self.post = PostHelper("tinysubredditoftheday", reddit)
+        
+    def post_handling(self):        
+        if self.post.check_time():
+            self.post.send_post()
 
     def search_for_dates(self, submission: praw.Reddit.submission):
         global db
@@ -251,7 +261,7 @@ class TSROTD:
             if announce:                
                 self.discord.new_post(db[submission.id], f"https://reddit.com{submission.permalink}")
             
-    def create_schedule(self):
+    def create_schedule(self):        
         schedule = ScheduleBuilder()
         schedule.do_the_magic()
         text = schedule.finish_and_return()
@@ -307,6 +317,8 @@ class PostHelper:
 
         devsub_post = self.reddit.submission(post_id)
         devsub_post.flair.select("05cf3a30-3dc5-11e4-9983-12313b0ab8de")
+    
+        db["LAST_POST_DAY"] = datetime.datetime.now().day
     
         db.pop(db["NEXT_POST"])
         db.pop(db[post_id])
@@ -380,11 +392,7 @@ def main():
     reddit = Reddit_Handler()
     reddit.tsrotd.check_for_new_posts()
     reddit.tsrotd.create_schedule()
-    
-    post = PostHelper("tinysubredditoftheday", reddit.reddit)
-    
-    if post.check_time():
-        post.send_post()
+    reddit.tsrotd.post_handling()
     
     reddit.exit()
 
