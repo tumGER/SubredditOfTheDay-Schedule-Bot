@@ -91,7 +91,7 @@ class ScheduleBuilder:
         self.ending = "\n\n Beep, boop, bap - Booing Conalfisher 24/7"
         
         self.body += self.beginning
-    
+        
     def add_field(self, key: str, value: str, details: str):
         self.body += f"\n{key} | {value} | {details}"
         
@@ -194,8 +194,10 @@ class TSROTD:
             
         if submission.num_comments > 0:
             for comment in submission.comments:
-                if "[date]" in comment.body.lower() \
-                and (date := helpers.parse_date_from_string(comment.body)) != None \
+                comment_body = comment.body.replace("\\", "") # new.reddit.com issue
+                
+                if "[date]" in comment_body.lower() \
+                and (date := helpers.parse_date_from_string(comment_body)) != None \
                 and helpers.check_if_date_valid(date):
                     logging.info(f"Found date comment for {submission.id}: {comment.id}")    
                     
@@ -206,11 +208,13 @@ class TSROTD:
         global db
         
         for comment in submission.comments:
-            if not "[title]" in comment.body.lower():
+            comment_body = comment.body.replace("\\", "") # new.reddit.com issue
+            
+            if not "[title]" in comment_body.lower():
                 continue
     
             logging.info(f"Found title comment for {submission.id}: {comment.id}")
-            title = comment.body[7:].strip()
+            title = comment_body[7:].strip()
             
             db[submission.id]["title"] = title
 
@@ -366,7 +370,12 @@ class DiscordHelper:
         sub = data["sub"] if "sub" in data.keys() else "UNKNOWN SUBREDDIT"
         post_title = data["title"] if "title" in data.keys() else "UNKNOWN TITLE"
         
-        self.basic_message(f"/r/{sub}: {post_title}", title, color)
+        self.embed = DiscordEmbed(
+            title = f"/r/{sub}: {post_title}",
+            description = title,
+            color = color.value
+        )
+        
         self.embed.set_url(post_url)
         
         self.embed.set_author(name = "tomBOT", url = "https://github.com/tumGER/SubredditOfTheDay-Schedule-Bot", icon_url = "https://avatars.githubusercontent.com/u/25822956?v=4")
@@ -394,7 +403,7 @@ class Color(enum.Enum):
 def main():
     logging.root.handlers = []
     logging.basicConfig(
-        level=logging.INFO,
+        level=logging.DEBUG,
         format="%(asctime)s [%(levelname)s] %(message)s",
         handlers=[
             logging.FileHandler("debug.log"),
