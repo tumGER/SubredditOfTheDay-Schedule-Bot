@@ -46,6 +46,8 @@ class Reddit_Handler:
 
         self.login()
 
+        self.reddit.validate_on_submit = True
+
         self.tsrotd = TSROTD(self.reddit)
 
     def login(self):
@@ -84,11 +86,21 @@ class ScheduleBuilder:
         self.body += self.ending
         return self.body
     
+    def add_NEXT_POST(self, id: str):
+        global db
+        
+        logging.info("Next post is: " + str(id))
+        
+        db["NEXT_POST"] = str(id)
+    
     def do_the_magic(self):
         emergency_posts = []
         ready_posts = []
         
         for sub in db.keys():
+            if sub == "NEXT_POST":
+                continue
+            
             if not "IS_READY" in db[sub].keys():
                 continue
             
@@ -97,7 +109,7 @@ class ScheduleBuilder:
             else:
                 ready_posts.append(sub)
         
-        for i in range(1, 30):
+        for i in range(0, 30):
             found_post = False
             
             if i != 0:
@@ -121,12 +133,18 @@ class ScheduleBuilder:
                     
                     ready_posts.remove(post)
                     
+                    if i == 0:
+                        self.add_NEXT_POST(post)
+                    
                     break
             
             if not found_post:
                 if len(emergency_posts) == 0:
                     self.add_field("No Sub Available", f"{day}.{month}.{year}", "")
                     continue
+                
+                if i == 0:
+                    self.add_NEXT_POST(emergency_posts[0])
                 
                 self.add_field(db[emergency_posts[0]]["sub"], f"{day}.{month}.{year}", "Emergency")
                 emergency_posts.pop(0)
@@ -253,18 +271,23 @@ class PostHelper:
         now = datetime.datetime.now()
         
         for submission in self.sub.new(limit=3):
+            if submission.removed:
+                continue
+            
             time_post = datetime.datetime.utcfromtimestamp(submission.created_utc)
             difference = now - time_post
             if (difference.total_seconds() / 3600) < 22:
+                logging.info("Last post was less than 22 hours ago")
                 return False
         
-        if now.hour == 12:
+        if now.hour >= 12:
             return True
         
     def send_post(self):
         try:
-            post = db.pop(db["NEXT_POST"])
-        except KeyError:
+            post_id = db["NEXT_POST"]
+            post = db[post_id]
+        except TypeError:
             logging.error("Couldn't find next post!!!")
             discord = DiscordHelper(discord_webhook)
             discord.basic_message("Error Posting Post",
@@ -272,7 +295,21 @@ class PostHelper:
                                   Color.red)
             return
         
-        # @TODO: Continue work here
+        title = "{} - /r/{}: {}".format(helpers.output_good_post_date_str(), post["sub"], post["title"]) # formatted strings fail on dict extractions
+        
+        submission = self.sub.submit(
+            title = title,
+            url = "https://reddit.com/r/{}".format(post["sub"])
+        )
+        
+        discord = DiscordHelper(discord_webhook)
+        discord.basic_message("Posted To Subreddit!", f"https://reddit.com{submission.permalink}", Color.green)
+
+        devsub_post = self.reddit.submission(post_id)
+        devsub_post.flair.select("05cf3a30-3dc5-11e4-9983-12313b0ab8de")
+    
+        db.pop(db["NEXT_POST"])
+        db.pop(db[post_id])
 
 class DiscordHelper:
     def __init__(self, webhook_url: str):
@@ -343,6 +380,11 @@ def main():
     reddit = Reddit_Handler()
     reddit.tsrotd.check_for_new_posts()
     reddit.tsrotd.create_schedule()
+    
+    post = PostHelper("tinysubredditoftheday", reddit.reddit)
+    
+    if post.check_time():
+        post.send_post()
     
     reddit.exit()
 

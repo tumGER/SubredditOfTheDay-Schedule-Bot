@@ -68,3 +68,24 @@ def parse_date(date: datetime.date):
     db_dt["year"] = find_year_by_datetime(date)
     
     return db_dt
+
+def output_good_post_date_str():
+    """Returns a formatted date in the style of the subreddit titles
+
+    Returns:
+        str: Formatted datestring
+    """
+    date = datetime.datetime.now()
+    
+    endings = {
+        1: "st",
+        2: "nd",
+        3: "rd"
+    }
+    
+    ending = endings[date.day] if date.day in endings.keys() else "th" # Some Match Casing till actual match casing arrives in Python 3.10
+    
+    month = date.strftime("%B")
+    str_date = f"{month} {str(date.day)}{ending}, {str(date.year)}"
+    
+    return str_date
