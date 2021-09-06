@@ -335,6 +335,12 @@ class PostHelper:
         devsub_post = self.reddit.submission(post_id)
         devsub_post.flair.select("05cf3a30-3dc5-11e4-9983-12313b0ab8de")
     
+        hostsub = self.reddit.subreddit(post["sub"])
+        hostsub.submit(
+            title = "Congratulations, /r/{}! You are Tiny Subreddit of the Day!".format(post["sub"]),
+            url = f"https://reddit.com{submission.permalink}"
+        )
+    
         db["LAST_POST_DAY"] = datetime.datetime.now().day
     
         db.pop(db["NEXT_POST"])
