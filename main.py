@@ -22,6 +22,7 @@ import re
 import enum
 
 import praw.exceptions
+import prawcore.exceptions
 
 from discord_webhook import DiscordWebhook, DiscordEmbed
 
@@ -313,8 +314,26 @@ class PostHelper:
     def send_post(self):
         try:
             post_id = db["NEXT_POST"]
+            
+            if post_id not in db.keys():
+                db.pop("NEXT_POST")
+                logging.warning("Post wasn't in DB!")
+                return
+            
             post = db[post_id]
-        except TypeError:
+
+            try:
+                flair =  self.reddit.submission(db[post_id]).link_flair_text 
+            except prawcore.NotFound:
+                flair = "404"
+
+            if not flair in ("BOT READY", "EMERGENCY"):
+                logging.warning("Ghost in DB!")
+                db.pop(db["NEXT_POST"])
+                db.pop("NEXT_POST")
+            
+                return
+        except (TypeError, KeyError):
             logging.error("Couldn't find next post!!!")
             discord = DiscordHelper(discord_webhook)
             discord.basic_message("Error Posting Post",
@@ -344,7 +363,7 @@ class PostHelper:
         db["LAST_POST_DAY"] = datetime.datetime.now().day
     
         db.pop(db["NEXT_POST"])
-        db.pop(db[post_id])
+        db.pop("NEXT_POST")
 
 class DiscordHelper:
     def __init__(self, webhook_url: str):
