@@ -339,7 +339,8 @@ class PostHelper:
                 return
         except (TypeError, KeyError):
             try:
-                if "HAS_POSTED_ABOUT_NO_SUB" in db.keys():
+                if "HAS_POSTED_ABOUT_NO_SUB" in db.keys() \
+                and db["HAS_POSTED_ABOUT_NO_SUB"] == datetime.datetime.now().day:
                     logging.debug("Couldn't find next sub but already warned about it!")
                 else:
                     raise KeyError
@@ -349,7 +350,7 @@ class PostHelper:
                 discord.basic_message("Error Posting Post",
                                     "Couldn't find NEXT_POST in DB",
                                     Color.red)
-                db["HAS_POSTED_ABOUT_NO_SUB"] = None
+                db["HAS_POSTED_ABOUT_NO_SUB"] = datetime.datetime.now().day
             finally:
                 return
         
@@ -442,7 +443,7 @@ class Color(enum.Enum):
 def main():      
     logging.root.handlers = []
     logging.basicConfig(
-        level=logging.DEBUG,
+        level=logging.DEBUG if DEV else logging.INFO,
         format="%(asctime)s [%(levelname)s] %(message)s",
         handlers=[
             logging.FileHandler("debug.log"),
