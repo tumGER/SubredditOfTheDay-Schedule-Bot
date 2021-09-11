@@ -112,7 +112,7 @@ class ScheduleBuilder:
         ready_posts = []
         
         for sub in db.keys():
-            if sub in ("NEXT_POST", "LAST_POST_DAY"):
+            if sub in ("NEXT_POST", "LAST_POST_DAY", "HAS_POSTED_ABOUT_NO_SUB"):
                 continue
             
             if not "IS_READY" in db[sub].keys():
@@ -323,9 +323,13 @@ class PostHelper:
             post = db[post_id]
 
             try:
-                flair =  self.reddit.submission(db[post_id]).link_flair_text 
+                devsub_post = self.reddit.submission(post_id)
+                flair = devsub_post.link_flair_text 
             except prawcore.NotFound:
                 flair = "404"
+                logging.warning("Reddit returned 404 on request!")
+                
+            logging.debug(f"Flair is: {flair}")
 
             if not flair in ("BOT READY", "EMERGENCY"):
                 logging.warning("Ghost in DB!")
@@ -334,31 +338,41 @@ class PostHelper:
             
                 return
         except (TypeError, KeyError):
-            logging.error("Couldn't find next post!!!")
-            discord = DiscordHelper(discord_webhook)
-            discord.basic_message("Error Posting Post",
-                                  "Couldn't find NEXT_POST in DB",
-                                  Color.red)
-            return
+            try:
+                if "HAS_POSTED_ABOUT_NO_SUB" in db.keys():
+                    logging.debug("Couldn't find next sub but already warned about it!")
+                else:
+                    raise KeyError
+            except (TypeError, KeyError):
+                logging.debug("Couldn't find next post!!!")
+                discord = DiscordHelper(discord_webhook)
+                discord.basic_message("Error Posting Post",
+                                    "Couldn't find NEXT_POST in DB",
+                                    Color.red)
+                db["HAS_POSTED_ABOUT_NO_SUB"] = None
+            finally:
+                return
         
         title = "{} - /r/{}: {}".format(helpers.output_good_post_date_str(), post["sub"], post["title"]) # formatted strings fail on dict extractions
         
-        submission = self.sub.submit(
-            title = title,
-            url = "https://reddit.com/r/{}".format(post["sub"])
-        )
+        if not DEV:
+            submission = self.sub.submit(
+                title = title,
+                url = "https://reddit.com/r/{}".format(post["sub"])
+            )
         
-        discord = DiscordHelper(discord_webhook)
-        discord.basic_message("Posted To Subreddit!", f"https://reddit.com{submission.permalink}", Color.green)
+            discord = DiscordHelper(discord_webhook)
+            discord.basic_message("Posted To Subreddit!", f"https://reddit.com{submission.permalink}", Color.green)
 
-        devsub_post = self.reddit.submission(post_id)
-        devsub_post.flair.select("05cf3a30-3dc5-11e4-9983-12313b0ab8de")
+            devsub_post.flair.select("05cf3a30-3dc5-11e4-9983-12313b0ab8de")
     
-        hostsub = self.reddit.subreddit(post["sub"])
-        hostsub.submit(
-            title = "Congratulations, /r/{}! You are Tiny Subreddit of the Day!".format(post["sub"]),
-            url = f"https://reddit.com{submission.permalink}"
-        )
+            hostsub = self.reddit.subreddit(post["sub"])
+            hostsub.submit(
+                title = "Congratulations, /r/{}! You are Tiny Subreddit of the Day!".format(post["sub"]),
+                url = f"https://reddit.com{submission.permalink}"
+            )
+        else:
+            logging.debug("Script would have posted about: {}".format(post["sub"]))
     
         db["LAST_POST_DAY"] = datetime.datetime.now().day
     
@@ -425,7 +439,7 @@ class Color(enum.Enum):
     green = "00dd1f"
     gray = "a0a0a0"   
 
-def main():
+def main():      
     logging.root.handlers = []
     logging.basicConfig(
         level=logging.DEBUG,
@@ -440,6 +454,10 @@ def main():
     reddit.tsrotd.check_for_new_posts()
     reddit.tsrotd.create_schedule()
     reddit.tsrotd.post_handling()
+    
+    if DEV:
+        logging.debug("Sending DEV test post!")
+        reddit.tsrotd.post.send_post()
     
     reddit.exit()
 
