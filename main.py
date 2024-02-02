@@ -252,7 +252,7 @@ class TSROTD:
             
             logging.debug(f"Going through submission: {submission.title}")
             
-            if not submission.link_flair_text in ("BOT READY", "EMERGENCY"):
+            if not submission.link_flair_text in ("BOT READY", "EMERGENCY READY"):
                 continue
             
             logging.info("Found BOT READY / EMERGENCY submission!")
@@ -264,12 +264,14 @@ class TSROTD:
             # Get the text of the post
             db[submission.id]["text"] = submission.selftext
             
+            logging.debug(f"The text is: {db[submission.id]['text']}")
+            
             if "IS_READY" in db[submission.id].keys():
                 continue
             
             logging.info(submission.link_flair_text)
             
-            if submission.link_flair_text != "EMERGENCY":
+            if submission.link_flair_text != "EMERGENCY READY":
                 self.search_for_dates(submission)
             else:
                 db[submission.id]["EMERGENCY"] = None
@@ -371,7 +373,7 @@ class PostHelper:
             discord = DiscordHelper(discord_webhook)
             discord.basic_message("Posted To Subreddit!", f"https://reddit.com{submission.permalink}", Color.green)
 
-            devsub_post.flair.select("05cf3a30-3dc5-11e4-9983-12313b0ab8de")
+            #devsub_post.flair.select("05cf3a30-3dc5-11e4-9983-12313b0ab8de")
     
             hostsub = self.reddit.subreddit(post["sub"])
             hostsub.submit(
@@ -380,6 +382,8 @@ class PostHelper:
             )
         else:
             logging.debug("Script would have posted about: {}".format(post["sub"]))
+            discord = DiscordHelper(discord_webhook)
+            discord.basic_message("Script would have posted about: {}".format(post["sub"]), Color.red)
     
         db["LAST_POST_DAY"] = datetime.datetime.now().day
     
@@ -419,7 +423,7 @@ class DiscordHelper:
         
         self.embed = DiscordEmbed(
             title = f"/r/{sub}: {post_title}",
-            description = f"{title}\n\n {text}",
+            description = f"{title}\n {text[:45]}\n [...]",
             color = color.value
         )
         
