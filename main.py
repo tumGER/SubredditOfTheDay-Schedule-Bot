@@ -1,5 +1,5 @@
 ###
-# Copyright 2021 tomGER, git@tomger.eu
+# Copyright 2021-2024 AnnsAnn, git@annsann.eu
 #
 # Licensed under the EUPL, Version 1.2 or – as soon they will be approved by the European Commission - subsequent versions of the EUPL (the "Licence");
 # You may not use this work except in compliance with theLicence.
@@ -72,8 +72,8 @@ class Reddit_Handler:
             self.reddit = praw.Reddit(
                 client_id = id,
                 client_secret = secret,
-                user_agent = "linux:srotd:v0.1-dev (By /u/_tomGER)",
-                username = "r_tomBOT",
+                user_agent = "linux:srotd:v0.1-dev",
+                username = username,
                 password = password)
         except praw.exceptions.RedditAPIException as e:
             logging.critical(f"Error in login: {e}")
@@ -135,6 +135,9 @@ class ScheduleBuilder:
             month = date.month
             year = date.year
             
+            if db.get("LAST_POST_DAY") == None:
+                db["LAST_POST_DAY"] = 0
+                
             if db["LAST_POST_DAY"] == day and i == 0:
                 continue
             
@@ -175,10 +178,10 @@ class TSROTD:
     """
     def __init__(self, reddit: praw.Reddit):
         self.reddit = reddit
-        self.sub = reddit.subreddit("tsrotd_dev")
+        self.sub = reddit.subreddit("srotd_dev")
         self.discord = DiscordHelper(discord_webhook)
         
-        self.post = PostHelper("tinysubredditoftheday", reddit)
+        self.post = PostHelper("subredditoftheday", reddit)
         
     def post_handling(self):        
         if self.post.check_time():
@@ -257,6 +260,9 @@ class TSROTD:
             if not submission.id in db.keys():
                 db[submission.id] = {}
                 announce = True
+                
+            # Get the text of the post
+            db[submission.id]["text"] = submission.selftext
             
             if "IS_READY" in db[submission.id].keys():
                 continue
@@ -284,7 +290,7 @@ class TSROTD:
         schedule.do_the_magic()
         text = schedule.finish_and_return()
         
-        submission = self.reddit.submission("pfvef6")
+        submission = self.reddit.submission(update_post_id)
         
         body = submission.selftext.split("=== STARTING BOT FIELD ===", 1)[0]
         submission.edit(body + text)
@@ -359,7 +365,7 @@ class PostHelper:
         if not DEV:
             submission = self.sub.submit(
                 title = title,
-                url = "https://reddit.com/r/{}".format(post["sub"])
+                selftext = post["text"]
             )
         
             discord = DiscordHelper(discord_webhook)
@@ -369,7 +375,7 @@ class PostHelper:
     
             hostsub = self.reddit.subreddit(post["sub"])
             hostsub.submit(
-                title = "Congratulations, /r/{}! You are Tiny Subreddit of the Day!".format(post["sub"]),
+                title = "Congratulations, /r/{}! You are Subreddit of the Day!".format(post["sub"]),
                 url = f"https://reddit.com{submission.permalink}"
             )
         else:
@@ -409,10 +415,11 @@ class DiscordHelper:
         
         sub = data["sub"] if "sub" in data.keys() else "UNKNOWN SUBREDDIT"
         post_title = data["title"] if "title" in data.keys() else "UNKNOWN TITLE"
+        text = data["text"] if "text" in data.keys() else "UNKNOWN TEXT"
         
         self.embed = DiscordEmbed(
             title = f"/r/{sub}: {post_title}",
-            description = title,
+            description = f"{title}\n\n {text}",
             color = color.value
         )
         
@@ -463,4 +470,6 @@ def main():
     reddit.exit()
 
 if __name__ == "__main__":
+    print("Starting ...")
+    print("Running in DEV mode" if DEV else "Running in PROD mode")
     main()

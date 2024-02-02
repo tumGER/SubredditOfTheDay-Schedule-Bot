@@ -1,5 +1,5 @@
 ###
-# Copyright 2021 tomGER, git@tomger.eu
+# Copyright 2021-2024 AnnsAnn, git@annsann.eu
 #
 # Licensed under the EUPL, Version 1.2 or – as soon they will be approved by the European Commission - subsequent versions of the EUPL (the "Licence");
 # You may not use this work except in compliance with theLicence.
