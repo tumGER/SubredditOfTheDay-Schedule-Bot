@@ -269,6 +269,9 @@ class TSROTD:
             if "IS_READY" in db[submission.id].keys():
                 continue
             
+            if not "ANNOUNCED" in db[submission.id].keys():
+                db[submission.id]["ANNOUNCED"] = False
+            
             logging.info(submission.link_flair_text)
             
             if submission.link_flair_text != "EMERGENCY READY":
@@ -284,7 +287,8 @@ class TSROTD:
                 db[submission.id]["IS_READY"] = None
                 announce = True
                 
-            if announce:                
+            if announce and not db[submission.id]["ANNOUNCED"]:  
+                db[submission.id]["ANNOUNCED"] = True              
                 self.discord.new_post(db[submission.id], f"https://reddit.com{submission.permalink}")
             
     def create_schedule(self):        
@@ -383,7 +387,7 @@ class PostHelper:
         else:
             logging.debug("Script would have posted about: {}".format(post["sub"]))
             discord = DiscordHelper(discord_webhook)
-            discord.basic_message("Script would have posted about: {}".format(post["sub"]), Color.red)
+            discord.basic_message("Debug Info", "Script would have posted about {} but posting is currently disabled".format(post["sub"]), Color.red)
     
         db["LAST_POST_DAY"] = datetime.datetime.now().day
     
@@ -429,7 +433,7 @@ class DiscordHelper:
         
         self.embed.set_url(post_url)
         
-        self.embed.set_author(name = "tomBOT", url = "https://github.com/tumGER/SubredditOfTheDay-Schedule-Bot", icon_url = "https://avatars.githubusercontent.com/u/25822956?v=4")
+        self.embed.set_author(name = "AnnsAnn Bot", url = "https://github.com/tumGER/SubredditOfTheDay-Schedule-Bot", icon_url = "https://avatars.githubusercontent.com/u/25822956?v=4")
         
         if "date" in data.keys():
             dt = data["date"]
