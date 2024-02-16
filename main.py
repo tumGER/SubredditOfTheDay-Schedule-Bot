@@ -307,7 +307,7 @@ class TSROTD:
     def check_for_new_posts(self):
         global db
 
-        for submission in self.sub.new(limit=15):
+        for submission in self.sub.new(limit=30):
             announce = False
             
             logging.debug(f"Going through submission: {submission.title}")
@@ -320,6 +320,12 @@ class TSROTD:
             if not submission.id in db.keys():
                 db[submission.id] = {}
                 announce = True
+            
+            # Check if the post has been removed
+            if submission.removed:
+                logging.warning(f"Post {submission.id} has been removed!")
+                db.pop(submission.id)
+                continue
                 
             # Add author
             db[submission.id]["author"] = submission.author.name
