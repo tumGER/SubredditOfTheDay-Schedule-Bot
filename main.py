@@ -154,9 +154,9 @@ class ScheduleBuilder:
                 po_dt = db[post]["date"]
                 
                 if "IS_READY" in db[post].keys():
-                    state = "Ready"
+                    state = "✅ Ready"
                 else:
-                    state = "Draft"
+                    state = "⚒️ Draft"
                     
                 if "author" in db[post].keys():
                     author = db[post]["author"]
@@ -204,7 +204,7 @@ class ScheduleBuilder:
                 
                 title = self.limit_title(title)
                 
-                self.add_field(title, f"{day}.{month}.{year}", "Emergency", f"u/{author}", f"[LINK](https://www.reddit.com/r/srotd_dev/comments/{emergency_posts[0]})")
+                self.add_field(title, f"{day}.{month}.{year}", "🚨 Emergency", f"u/{author}", f"[LINK](https://www.reddit.com/r/srotd_dev/comments/{emergency_posts[0]})")
                 emergency_posts.pop(0)
                 
 class TSROTD:
