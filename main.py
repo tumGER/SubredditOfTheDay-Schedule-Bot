@@ -453,10 +453,10 @@ class PostHelper:
                     raise KeyError
             except (TypeError, KeyError):
                 logging.debug("Couldn't find next post!!!")
-                discord = DiscordHelper(discord_webhook)
-                discord.basic_message("Error Posting Post",
-                                    "Couldn't find NEXT_POST in DB",
-                                    Color.red)
+                # discord = DiscordHelper(discord_webhook)
+                # discord.basic_message("Error Posting Post",
+                #                     "Couldn't find NEXT_POST in DB",
+                #                     Color.red)
                 db["HAS_POSTED_ABOUT_NO_SUB"] = datetime.datetime.now().day
             finally:
                 return
