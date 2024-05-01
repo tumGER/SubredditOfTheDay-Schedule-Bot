@@ -72,7 +72,7 @@ class Reddit_Handler:
             self.reddit = praw.Reddit(
                 client_id = id,
                 client_secret = secret,
-                user_agent = "linux:srotd:v0.1-dev (By /u/_tomGER)",
+                user_agent = "linux:srotd:v0.2",
                 username = "r_tomBOT",
                 password = password)
         except praw.exceptions.RedditAPIException as e:
