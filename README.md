@@ -1,4 +1,4 @@
-# TSROTD Schedule Bot
+# SROTD Schedule Bot
 
 The Open Source version of the bot that runs and maintains the system behind the over 1.1 million users following SubredditOfTheDay and TinySubredditOfTheDay
 
@@ -11,7 +11,6 @@ The Open Source version of the bot that runs and maintains the system behind the
 * Discord Integration
   * Webhook based updates to drafts, posts and more
   * Embed creation
-* Quite a lot of modularity to make it reusable for multiple different usecases
 * Extensive logging
 
 ## Usage

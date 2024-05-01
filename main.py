@@ -1,5 +1,5 @@
 ###
-# Copyright 2021 tomGER, git@tomger.eu
+# Copyright 2021-2024 AnnsAnn, git@annsann.eu
 #
 # Licensed under the EUPL, Version 1.2 or – as soon they will be approved by the European Commission - subsequent versions of the EUPL (the "Licence");
 # You may not use this work except in compliance with theLicence.
@@ -88,13 +88,13 @@ class Reddit_Handler:
 class ScheduleBuilder:
     def __init__(self):
         self.body = ""
-        self.beginning = "=== STARTING BOT FIELD === \n\n\n Subreddit | Date | Info \n ---|---|----"
+        self.beginning = "=== STARTING BOT FIELD === \n\n\n Subreddit | Date | Info | Author | Link \n ---|---|----|----|----"
         self.ending = "\n\n Beep, boop, bap - Booing Conalfisher 24/7"
         
         self.body += self.beginning
         
-    def add_field(self, key: str, value: str, details: str):
-        self.body += f"\n{key} | {value} | {details}"
+    def add_field(self, key: str, value: str, details: str, author: str = None, link_id: str = None):
+        self.body += f"\n{key} | {value} | {details} | {author} | {link_id}"
         
     def finish_and_return(self):
         self.body += self.ending
@@ -107,6 +107,11 @@ class ScheduleBuilder:
         
         db["NEXT_POST"] = str(id)
     
+    def limit_title(self, title: str):
+        if len(title) > 40:
+            return f"{title[:50]}[...]"
+        return title
+    
     def do_the_magic(self):
         emergency_posts = []
         ready_posts = []
@@ -115,11 +120,10 @@ class ScheduleBuilder:
             if sub in ("NEXT_POST", "LAST_POST_DAY", "HAS_POSTED_ABOUT_NO_SUB"):
                 continue
             
-            if not "IS_READY" in db[sub].keys():
-                continue
-            
             if "EMERGENCY" in db[sub].keys():
                 emergency_posts.append(sub)
+            elif "WORK_IN_PROGRESS" in db[sub].keys():
+                ready_posts.append(sub)
             else:
                 ready_posts.append(sub)
         
@@ -135,6 +139,13 @@ class ScheduleBuilder:
             month = date.month
             year = date.year
             
+            if DEV and i == 0:
+                self.add_field("IN DEV MODE", f"{day}.{month}.{year}", "TODAY", "BOT", "NONE")
+                continue # Skip the first post if in DEV mode
+            
+            if db.get("LAST_POST_DAY") == None:
+                db["LAST_POST_DAY"] = 0
+                
             if db["LAST_POST_DAY"] == day and i == 0:
                 continue
             
@@ -142,10 +153,27 @@ class ScheduleBuilder:
                 
                 po_dt = db[post]["date"]
                 
+                if "IS_READY" in db[post].keys():
+                    state = "✅ Ready"
+                else:
+                    state = "⚒️ Draft"
+                    
+                if "author" in db[post].keys():
+                    author = db[post]["author"]
+                else:
+                    author = "Unknown"
+                    
+                if "title" in db[post].keys():
+                    title = db[post]["title"]
+                else:
+                    title = f"{db[post]['sub']}: Unknown Title"
+                
+                title = self.limit_title(title)
+                
                 if po_dt["day"] == day \
                 and po_dt["month"] == month \
                 and po_dt["year"] == year:
-                    self.add_field(db[post]["sub"], f"{day}.{month}.{year}", "Scheduled")
+                    self.add_field(title, f"{day}.{month}.{year}", f"{state}", f"u/{author}", f"[LINK](https://www.reddit.com/r/srotd_dev/comments/{post})")
                     logging.info(f"Found sub for {day}.{month}")
                     found_post = True
                     
@@ -164,7 +192,19 @@ class ScheduleBuilder:
                 if i == 0:
                     self.add_NEXT_POST(emergency_posts[0])
                 
-                self.add_field(db[emergency_posts[0]]["sub"], f"{day}.{month}.{year}", "Emergency")
+                if "author" in db[emergency_posts[0]].keys():
+                    author = db[emergency_posts[0]]["author"]
+                else:
+                    author = "Unknown"
+                    
+                if "title" in db[emergency_posts[0]].keys():
+                    title = db[emergency_posts[0]]["title"]
+                else:
+                    title = f"{db[emergency_posts[0]]['sub']}: Unknown Title"
+                
+                title = self.limit_title(title)
+                
+                self.add_field(title, f"{day}.{month}.{year}", "🚨 Emergency", f"u/{author}", f"[LINK](https://www.reddit.com/r/srotd_dev/comments/{emergency_posts[0]})")
                 emergency_posts.pop(0)
                 
 class TSROTD:
@@ -175,14 +215,23 @@ class TSROTD:
     """
     def __init__(self, reddit: praw.Reddit):
         self.reddit = reddit
-        self.sub = reddit.subreddit("tsrotd_dev")
+        self.sub = reddit.subreddit("srotd_dev")
         self.discord = DiscordHelper(discord_webhook)
         
-        self.post = PostHelper("tinysubredditoftheday", reddit)
+        self.post = PostHelper("subredditoftheday", reddit)
         
     def post_handling(self):        
         if self.post.check_time():
             self.post.send_post()
+
+    def get_top_comments_sorted_by_time(self, submission: praw.Reddit.submission):
+        comments = submission.comments
+        comments.replace_more(limit=0)
+        comments = comments.list()
+        
+        comments.sort(key=lambda x: x.created_utc)
+        
+        return comments
 
     def search_for_dates(self, submission: praw.Reddit.submission):
         global db
@@ -192,12 +241,13 @@ class TSROTD:
             logging.info(f"Found valid submission date in title of: {submission.id}")
             db[submission.id]["date"] = {}
             db[submission.id]["date"] = helpers.parse_date(date)
-            
+        
         if submission.num_comments > 0:
-            for comment in submission.comments:
+            # Search for date in comments sorted by time
+            for comment in self.get_top_comments_sorted_by_time(submission):
                 comment_body = comment.body.replace("\\", "") # new.reddit.com issue
                 
-                if "[date]" in comment_body.lower() \
+                if ("[date]" in comment_body.lower() or "[full]" in comment_body.lower()) \
                 and (date := helpers.parse_date_from_string(comment_body)) != None \
                 and helpers.check_if_date_valid(date):
                     logging.info(f"Found date comment for {submission.id}: {comment.id}")    
@@ -208,16 +258,25 @@ class TSROTD:
     def check_for_title(self, submission: praw.Reddit.submission):
         global db
         
-        for comment in submission.comments:
-            comment_body = comment.body.replace("\\", "") # new.reddit.com issue
-            
-            if not "[title]" in comment_body.lower():
-                continue
-    
-            logging.info(f"Found title comment for {submission.id}: {comment.id}")
-            title = comment_body[7:].strip()
-            
-            db[submission.id]["title"] = title
+        # Check if the submission title contains :
+        if "r/" in submission.title.lower():
+            db[submission.id]["title"] = submission.title[submission.title.find("r/"):]
+            logging.info(f"Found title in submission: {db[submission.id]['title']}")
+        
+        if submission.num_comments > 0:
+            # Search for title in comments sorted by time            
+            for comment in self.get_top_comments_sorted_by_time(submission):
+                comment_body = comment.body.replace("\\", "") # new.reddit.com issue
+                
+                if "[title]" in comment_body.lower():
+                    title = comment_body[7:].strip()
+                elif "[full]" in comment_body.lower():
+                    title = comment_body[comment_body.find("r/"):]
+                else:
+                    continue
+                
+                logging.info(f"Found title comment for {submission.id}: {comment.id}")
+                db[submission.id]["title"] = title
 
     def check_for_sub(self, submission: praw.Reddit.submission):
         for x in submission.title.split():          
@@ -231,6 +290,10 @@ class TSROTD:
             return submission.title
 
     def is_ready(self, submission: praw.Reddit.submission):        
+        if "WORK_IN_PROGRESS" in db[submission.id].keys():
+            logging.info("Found WORK_IN_PROGRESS")
+            return False
+        
         for key in ("date", "title", "sub"):
             logging.debug(key)
             
@@ -244,12 +307,12 @@ class TSROTD:
     def check_for_new_posts(self):
         global db
 
-        for submission in self.sub.new(limit=15):
+        for submission in self.sub.new(limit=30):
             announce = False
             
             logging.debug(f"Going through submission: {submission.title}")
             
-            if not submission.link_flair_text in ("BOT READY", "EMERGENCY"):
+            if not submission.link_flair_text in ("WORK IN PROGRESS", "BOT READY", "EMERGENCY READY"):
                 continue
             
             logging.info("Found BOT READY / EMERGENCY submission!")
@@ -258,17 +321,59 @@ class TSROTD:
                 db[submission.id] = {}
                 announce = True
             
-            if "IS_READY" in db[submission.id].keys():
+            # Check if the post has been removed
+            if submission.removed:
+                logging.warning(f"Post {submission.id} has been removed!")
+                db.pop(submission.id)
                 continue
+                
+            # Add author
+            db[submission.id]["author"] = submission.author.name
+            
+            if submission.link_flair_text == "EMERGENCY READY":
+                db[submission.id]["EMERGENCY"] = None
+                
+                # Remove IS_READY if it was set
+                if "IS_READY" in db[submission.id].keys():
+                    db[submission.id].pop("IS_READY")
+            elif submission.link_flair_text == "BOT READY":
+                # Remove EMERGENCY or WORK_IN_PROGRESS if it was set
+                
+                if "EMERGENCY" in db[submission.id].keys():
+                    db[submission.id].pop("EMERGENCY")
+                
+                if "WORK_IN_PROGRESS" in db[submission.id].keys():
+                    db[submission.id].pop("WORK_IN_PROGRESS")
+            elif submission.link_flair_text == "WORK IN PROGRESS":
+                db[submission.id]["WORK_IN_PROGRESS"] = None
+                
+                # Remove EMERGENCY or IS_READY if it was set
+                if "EMERGENCY" in db[submission.id].keys():
+                    db[submission.id].pop("EMERGENCY")
+                if "IS_READY" in db[submission.id].keys():
+                    db[submission.id].pop("IS_READY")
+                
+            # Get the text of the post
+            db[submission.id]["text"] = submission.selftext
+            
+            logging.debug(f"The text is: {db[submission.id]['text']}")
+            
+            if not "ANNOUNCED" in db[submission.id].keys():
+                db[submission.id]["ANNOUNCED"] = False
             
             logging.info(submission.link_flair_text)
             
-            if submission.link_flair_text != "EMERGENCY":
+            # If the post is not an emergency post, search for dates
+            if submission.link_flair_text != "EMERGENCY READY":
                 self.search_for_dates(submission)
-            else:
-                db[submission.id]["EMERGENCY"] = None
+                
+            # Search for title
             self.check_for_title(submission)
+            
+            # Search for subreddit
             if (sub := self.check_for_sub(submission)) != "":
+                if sub.endswith(":"):
+                    sub = sub[:-1]
                 db[submission.id]["sub"] = sub
             
             if self.is_ready(submission):
@@ -276,15 +381,17 @@ class TSROTD:
                 db[submission.id]["IS_READY"] = None
                 announce = True
                 
-            if announce:                
+            if announce and not db[submission.id]["ANNOUNCED"] and not "DEFINITELY_ANNOUNCED" in db[submission.id].keys():  
+                db[submission.id]["ANNOUNCED"] = True              
                 self.discord.new_post(db[submission.id], f"https://reddit.com{submission.permalink}")
+                db[submission.id]["DEFINITELY_ANNOUNCED"] = True
             
     def create_schedule(self):        
         schedule = ScheduleBuilder()
         schedule.do_the_magic()
         text = schedule.finish_and_return()
         
-        submission = self.reddit.submission("pfvef6")
+        submission = self.reddit.submission(update_post_id)
         
         body = submission.selftext.split("=== STARTING BOT FIELD ===", 1)[0]
         submission.edit(body + text)
@@ -359,21 +466,23 @@ class PostHelper:
         if not DEV:
             submission = self.sub.submit(
                 title = title,
-                url = "https://reddit.com/r/{}".format(post["sub"])
+                selftext = post["text"]
             )
         
             discord = DiscordHelper(discord_webhook)
             discord.basic_message("Posted To Subreddit!", f"https://reddit.com{submission.permalink}", Color.green)
 
-            devsub_post.flair.select("05cf3a30-3dc5-11e4-9983-12313b0ab8de")
+            #devsub_post.flair.select("05cf3a30-3dc5-11e4-9983-12313b0ab8de")
     
             hostsub = self.reddit.subreddit(post["sub"])
             hostsub.submit(
-                title = "Congratulations, /r/{}! You are Tiny Subreddit of the Day!".format(post["sub"]),
+                title = "Congratulations, /r/{}! You are Subreddit of the Day!".format(post["sub"]),
                 url = f"https://reddit.com{submission.permalink}"
             )
         else:
             logging.debug("Script would have posted about: {}".format(post["sub"]))
+            discord = DiscordHelper(discord_webhook)
+            discord.basic_message("Debug Info", "Script would have posted about {} but posting is currently disabled".format(post["sub"]), Color.red)
     
         db["LAST_POST_DAY"] = datetime.datetime.now().day
     
@@ -409,16 +518,17 @@ class DiscordHelper:
         
         sub = data["sub"] if "sub" in data.keys() else "UNKNOWN SUBREDDIT"
         post_title = data["title"] if "title" in data.keys() else "UNKNOWN TITLE"
+        text = data["text"] if "text" in data.keys() else "UNKNOWN TEXT"
         
         self.embed = DiscordEmbed(
             title = f"/r/{sub}: {post_title}",
-            description = title,
+            description = f"{title}\n {text[:45]}\n [...]",
             color = color.value
         )
         
         self.embed.set_url(post_url)
         
-        self.embed.set_author(name = "tomBOT", url = "https://github.com/tumGER/SubredditOfTheDay-Schedule-Bot", icon_url = "https://avatars.githubusercontent.com/u/25822956?v=4")
+        self.embed.set_author(name = "AnnsAnn Bot", url = "https://github.com/tumGER/SubredditOfTheDay-Schedule-Bot", icon_url = "https://avatars.githubusercontent.com/u/25822956?v=4")
         
         if "date" in data.keys():
             dt = data["date"]
@@ -463,4 +573,6 @@ def main():
     reddit.exit()
 
 if __name__ == "__main__":
+    print("Starting ...")
+    print("Running in DEV mode" if DEV else "Running in PROD mode")
     main()
